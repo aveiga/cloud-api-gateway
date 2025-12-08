@@ -58,6 +58,8 @@ USER gateway
 # Expose default port (configurable via config file)
 EXPOSE 4010
 
+
+
 # Run the gateway
 # Default config path can be overridden via CONFIG_PATH env var or -config flag
 ENTRYPOINT ["/app/gateway"]
