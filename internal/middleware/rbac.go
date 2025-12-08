@@ -80,4 +80,3 @@ func (m *RBACMiddleware) checkRoles(userRoles []string, requiredRoles []string, 
 	}
 	return false
 }
-

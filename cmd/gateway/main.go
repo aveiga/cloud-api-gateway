@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/aveiga/cloud-api-gateway/internal/auth"
 	"github.com/aveiga/cloud-api-gateway/internal/config"
 	"github.com/aveiga/cloud-api-gateway/internal/middleware"
@@ -19,6 +21,11 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to configuration file (or set CONFIG_PATH env var)")
 	flag.Parse()
@@ -64,13 +71,13 @@ func main() {
 		// If route has required roles, apply Auth -> RBAC -> Proxy
 		// Otherwise, just Proxy (public route)
 		var chain http.Handler = routeProxy
-		
+
 		if len(matchedRoute.RequiredRoles) > 0 {
 			// Route requires authentication and authorization
 			rbacMW := middleware.NewRBACMiddleware(matchedRoute)
 			chain = authMW.Handler(rbacMW.Handler(routeProxy))
 		}
-		
+
 		chain.ServeHTTP(w, r)
 	})
 
@@ -109,4 +116,3 @@ func main() {
 
 	log.Println("Server exited")
 }
-

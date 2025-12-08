@@ -2,7 +2,7 @@
 # Copy this file to config.yaml and customize for your environment
 
 server:
-  port: 8080
+  port: 4010
   read_timeout: 30s
   write_timeout: 30s
   idle_timeout: 120s
@@ -10,8 +10,8 @@ server:
 keycloak:
   # Keycloak token introspection endpoint
   # Replace {realm} with your Keycloak realm name
-  introspection_url: "https://keycloak.example.com/realms/{realm}/protocol/openid-connect/token/introspect"
-  client_id: "gateway-client"
+  introspection_url: "${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token/introspect"
+  client_id: "${KEYCLOAK_CLIENT_ID}"
   # Use environment variable substitution for secrets
   # Format: ${VAR_NAME} or ${VAR_NAME:-default_value}
   client_secret: "${KEYCLOAK_CLIENT_SECRET}"
@@ -44,7 +44,7 @@ routes:
     upstream: "http://admin-service:8080"
     required_roles: ["admin", "superuser"]
     # User must have BOTH admin AND superuser roles
-    require_all_roles: true
+    require_all_roles: false
 
   # Example: Public API route (no authentication required)
   - name: "public-api"
@@ -57,4 +57,3 @@ routes:
     path_pattern: "^/health$"
     methods: ["GET"]
     upstream: "http://health-service:8080"
-
