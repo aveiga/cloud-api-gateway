@@ -21,10 +21,7 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	godotenv.Load()
 
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to configuration file (or set CONFIG_PATH env var)")
