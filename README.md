@@ -31,11 +31,28 @@ cloud-api-gateway/
 
 ## Building
 
+### Local Build
+
 ```bash
 go build ./cmd/gateway
 ```
 
+### Docker Build
+
+```bash
+# Build for current platform
+docker build -t cloud-api-gateway .
+
+# Build for specific platform (e.g., Apple M-series)
+docker build --platform linux/arm64 -t cloud-api-gateway .
+
+# Build for multiple platforms
+docker buildx build --platform linux/amd64,linux/arm64 -t cloud-api-gateway .
+```
+
 ## Running
+
+### Local Execution
 
 ```bash
 # Using command line flag
@@ -44,6 +61,22 @@ go build ./cmd/gateway
 # Using environment variable
 CONFIG_PATH=config.yaml ./gateway
 ```
+
+### Docker Execution
+
+```bash
+# Using Docker image from GitHub Container Registry
+docker run -p 4010:4010 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  ghcr.io/aveiga/cloud-api-gateway:latest
+
+# Or build and run locally
+docker run -p 4010:4010 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  cloud-api-gateway
+```
+
+**Note**: Replace `aveiga/cloud-api-gateway` with your GitHub username/organization and repository name.
 
 ## Configuration
 
