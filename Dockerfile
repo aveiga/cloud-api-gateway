@@ -36,9 +36,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 # Runtime stage
 FROM alpine:latest
 
-# Install CA certificates and wget for healthcheck
-RUN apk --no-cache add ca-certificates tzdata wget
-
 # Create non-root user for security
 RUN addgroup -g 1000 gateway && \
     adduser -D -u 1000 -G gateway gateway
@@ -60,12 +57,6 @@ USER gateway
 
 # Expose default port (configurable via config file)
 EXPOSE 4010
-
-# Health check (requires a /health route to be configured in config.yaml)
-# Adjust the port number to match your server.port configuration
-# Comment out if no health endpoint is configured
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:4010/health || exit 1
 
 # Run the gateway
 # Default config path can be overridden via CONFIG_PATH env var or -config flag
