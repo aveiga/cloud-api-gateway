@@ -42,12 +42,13 @@ type CacheConfig struct {
 
 // RouteConfig represents a single route configuration
 type RouteConfig struct {
-	Name            string   `yaml:"name"`
-	PathPattern     string   `yaml:"path_pattern"`
+	Name            string `yaml:"name"`
+	PathPattern     string `yaml:"path_pattern"`
 	CompiledPattern *regexp.Regexp
 	Methods         []string `yaml:"methods"`
 	Upstream        string   `yaml:"upstream"`
 	StripPrefix     string   `yaml:"strip_prefix"`
+	RequireAuth     *bool    `yaml:"require_auth"` // nil = not specified (defaults to true), false = public, true = authenticated
 	RequiredRoles   []string `yaml:"required_roles"`
 	RequireAllRoles bool     `yaml:"require_all_roles"`
 }
@@ -127,8 +128,21 @@ func (c *Config) validateAndCompile() error {
 			return fmt.Errorf("route[%d].upstream is required", i)
 		}
 
-		// Compile regex pattern
-		compiled, err := regexp.Compile(route.PathPattern)
+		// Validate RequireAuth and RequiredRoles combination
+		// If required_roles is specified, require_auth must be true (or default to true)
+		if len(route.RequiredRoles) > 0 {
+			if route.RequireAuth != nil && !*route.RequireAuth {
+				return fmt.Errorf("route[%d]: cannot require roles without authentication (require_auth must be true)", i)
+			}
+		}
+
+		// Compile regex pattern with case-insensitive matching
+		// Add (?i) flag at the beginning if not already present
+		pattern := route.PathPattern
+		if !strings.HasPrefix(pattern, "(?i)") && !strings.HasPrefix(pattern, "(?i:") {
+			pattern = "(?i)" + pattern
+		}
+		compiled, err := regexp.Compile(pattern)
 		if err != nil {
 			return fmt.Errorf("route[%d].path_pattern invalid regex: %w", i, err)
 		}
@@ -143,3 +157,11 @@ func (c *Config) validateAndCompile() error {
 	return nil
 }
 
+// RequiresAuth returns true if authentication is required for this route
+// Defaults to true if require_auth is not specified (nil) for backward compatibility
+func (r *RouteConfig) RequiresAuth() bool {
+	if r.RequireAuth == nil {
+		return true // Default to requiring auth if not specified
+	}
+	return *r.RequireAuth
+}

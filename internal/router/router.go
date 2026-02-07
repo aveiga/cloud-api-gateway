@@ -32,7 +32,7 @@ func (r *Router) MatchRoute(req *http.Request) *config.RouteConfig {
 	method := strings.ToUpper(req.Method)
 
 	for _, route := range r.routes {
-		// Check if path matches regex pattern
+		// Check if path matches regex pattern (case-insensitive matching via compiled pattern)
 		if !route.CompiledPattern.MatchString(path) {
 			continue
 		}
@@ -57,4 +57,3 @@ func (r *Router) MatchRoute(req *http.Request) *config.RouteConfig {
 
 	return nil
 }
-

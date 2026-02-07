@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/aveiga/cloud-api-gateway/internal/config"
@@ -40,6 +41,7 @@ func (m *RBACMiddleware) Handler(next http.Handler) http.Handler {
 		// Check if user has required roles
 		hasPermission := m.checkRoles(userRoles, m.route.RequiredRoles, m.route.RequireAllRoles)
 		if !hasPermission {
+			log.Printf("Insufficient permissions for route %s", m.route.Name)
 			http.Error(w, "Insufficient permissions", http.StatusForbidden)
 			return
 		}

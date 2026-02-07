@@ -46,9 +46,10 @@ func main() {
 	keycloakClient := auth.NewClient(&cfg.Keycloak, cfg.Cache.Enabled, cfg.Cache.TTL)
 	routeRouter := router.NewRouter(cfg.Routes)
 	authMW := middleware.NewAuthMiddleware(keycloakClient)
+	auditMW := middleware.NewAuditMiddleware()
 
 	// Create HTTP handler
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Match route
 		matchedRoute := routeRouter.MatchRoute(r)
 		if matchedRoute == nil {
@@ -64,19 +65,29 @@ func main() {
 			return
 		}
 
-		// Compose middleware chain conditionally
-		// If route has required roles, apply Auth -> RBAC -> Proxy
-		// Otherwise, just Proxy (public route)
+		// Compose middleware chain
+		// - Public routes (require_auth: false): No auth, no RBAC
+		// - Authenticated routes (require_auth: true, no roles): Auth only
+		// - Authorized routes (require_auth: true, with roles): Auth + RBAC
 		var chain http.Handler = routeProxy
 
-		if len(matchedRoute.RequiredRoles) > 0 {
-			// Route requires authentication and authorization
-			rbacMW := middleware.NewRBACMiddleware(matchedRoute)
-			chain = authMW.Handler(rbacMW.Handler(routeProxy))
+		if matchedRoute.RequiresAuth() {
+			if len(matchedRoute.RequiredRoles) > 0 {
+				// Route requires both authentication and authorization
+				rbacMW := middleware.NewRBACMiddleware(matchedRoute)
+				chain = authMW.Handler(rbacMW.Handler(routeProxy))
+			} else {
+				// Route requires authentication only (no role check)
+				chain = authMW.Handler(routeProxy)
+			}
 		}
+		// If require_auth is false, chain remains as routeProxy (public route)
 
 		chain.ServeHTTP(w, r)
 	})
+
+	// Wrap handler with audit logging middleware (applied first to log all requests)
+	handler = auditMW.Handler(handler)
 
 	// Create HTTP server
 	server := &http.Server{
