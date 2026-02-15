@@ -7,8 +7,8 @@ server:
   write_timeout: 30s
   idle_timeout: 120s
 
-keycloak:
-  # Keycloak token introspection endpoint
+authz:
+  # Token introspection endpoint
   # Replace {realm} with your Keycloak realm name
   introspection_url: "${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token/introspect"
   client_id: "${KEYCLOAK_CLIENT_ID}"
@@ -23,37 +23,43 @@ cache:
   ttl: 60s
 
 routes:
-  # Example: User API route
+  # Example: Protected route with multiple authorization rules.
   - name: "user-api"
-    # Regex pattern to match request paths
     path_pattern: "^/api/v1/users(/.*)?$"
-    # Allowed HTTP methods (empty means all methods)
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    # Upstream service URL
     upstream: "http://user-service:8080"
-    # Prefix to strip from path before forwarding to upstream
     strip_prefix: "/api/v1"
-    # Required roles (OR logic by default)
-    required_roles: ["user:read", "user:write"]
-    # Set to true for AND logic (user must have ALL roles)
-    require_all_roles: false
+    rules:
+      # Rule 1: writers can create/update/delete users
+      - methods: ["POST", "PUT", "DELETE"]
+        required_roles: ["user:write"]
+        require_all_roles: true
+      # Rule 2: readers can fetch users
+      - methods: ["GET"]
+        required_roles: ["user:read"]
+        require_all_roles: true
 
-  # Example: Admin API route with AND logic
+  # Example: Protected route with method-specific admin access.
   - name: "admin-api"
     path_pattern: "^/api/v1/admin(/.*)?$"
     upstream: "http://admin-service:8080"
-    required_roles: ["admin", "superuser"]
-    # User must have BOTH admin AND superuser roles
-    require_all_roles: false
+    rules:
+      - methods: ["GET", "POST", "PUT", "DELETE"]
+        required_roles: ["admin", "superuser"]
+        require_all_roles: true
 
-  # Example: Public API route (no authentication required)
+  # Example: Authenticated route with no role requirement.
   - name: "public-api"
     path_pattern: "^/api/v1/public(/.*)?$"
     upstream: "http://public-service:8080"
-    # No required_roles means public access
+    rules:
+      - methods: ["GET"]
+        required_roles: []
+        require_all_roles: true
 
-  # Example: Health check endpoint (no authentication)
+  # Example: Public endpoint (no authentication).
   - name: "health"
     path_pattern: "^/health$"
-    methods: ["GET"]
     upstream: "http://health-service:8080"
+    rules:
+      - methods: ["GET"]
+        require_auth: false

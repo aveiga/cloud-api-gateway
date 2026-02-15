@@ -13,7 +13,7 @@ import (
 // Config represents the root configuration structure
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
-	Keycloak KeycloakConfig `yaml:"keycloak"`
+	Authz AuthzConfig `yaml:"authz"`
 	Cache    CacheConfig    `yaml:"cache"`
 	Routes   []RouteConfig  `yaml:"routes"`
 }
@@ -26,8 +26,8 @@ type ServerConfig struct {
 	IdleTimeout  time.Duration `yaml:"idle_timeout"`
 }
 
-// KeycloakConfig holds Keycloak connection settings
-type KeycloakConfig struct {
+// AuthzConfig holds authz (token introspection) connection settings
+type AuthzConfig struct {
 	IntrospectionURL string        `yaml:"introspection_url"`
 	ClientID         string        `yaml:"client_id"`
 	ClientSecret     string        `yaml:"client_secret"`
@@ -40,17 +40,26 @@ type CacheConfig struct {
 	TTL     time.Duration `yaml:"ttl"`
 }
 
-// RouteConfig represents a single route configuration
-type RouteConfig struct {
-	Name            string `yaml:"name"`
-	PathPattern     string `yaml:"path_pattern"`
-	CompiledPattern *regexp.Regexp
+// RouteRule defines method, authentication, and role requirements.
+type RouteRule struct {
 	Methods         []string `yaml:"methods"`
-	Upstream        string   `yaml:"upstream"`
-	StripPrefix     string   `yaml:"strip_prefix"`
-	RequireAuth     *bool    `yaml:"require_auth"` // nil = not specified (defaults to true), false = public, true = authenticated
+	RequireAuth     *bool    `yaml:"require_auth"` // nil defaults to true
 	RequiredRoles   []string `yaml:"required_roles"`
 	RequireAllRoles bool     `yaml:"require_all_roles"`
+}
+
+// RouteConfig represents a single route configuration
+type RouteConfig struct {
+	Name              string `yaml:"name"`
+	PathPattern       string `yaml:"path_pattern"`
+	CompiledPattern   *regexp.Regexp
+	Methods           []string    `yaml:"methods"`
+	Upstream          string      `yaml:"upstream"`
+	StripPrefix       string      `yaml:"strip_prefix"`
+	RequiredRoles     []string    `yaml:"required_roles"`
+	RequireAllRoles   bool        `yaml:"require_all_roles"`
+	LegacyRequireAuth *bool       `yaml:"require_auth"` // disallowed at route level; use rules[].require_auth
+	Rules             []RouteRule `yaml:"rules"`
 }
 
 // Load reads and parses the YAML configuration file
@@ -107,15 +116,15 @@ func (c *Config) validateAndCompile() error {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}
 
-	// Validate Keycloak config
-	if c.Keycloak.IntrospectionURL == "" {
-		return fmt.Errorf("keycloak.introspection_url is required")
+	// Validate authz config
+	if c.Authz.IntrospectionURL == "" {
+		return fmt.Errorf("authz.introspection_url is required")
 	}
-	if c.Keycloak.ClientID == "" {
-		return fmt.Errorf("keycloak.client_id is required")
+	if c.Authz.ClientID == "" {
+		return fmt.Errorf("authz.client_id is required")
 	}
-	if c.Keycloak.ClientSecret == "" {
-		return fmt.Errorf("keycloak.client_secret is required")
+	if c.Authz.ClientSecret == "" {
+		return fmt.Errorf("authz.client_secret is required")
 	}
 
 	// Validate and compile route patterns
@@ -126,14 +135,6 @@ func (c *Config) validateAndCompile() error {
 		}
 		if route.Upstream == "" {
 			return fmt.Errorf("route[%d].upstream is required", i)
-		}
-
-		// Validate RequireAuth and RequiredRoles combination
-		// If required_roles is specified, require_auth must be true (or default to true)
-		if len(route.RequiredRoles) > 0 {
-			if route.RequireAuth != nil && !*route.RequireAuth {
-				return fmt.Errorf("route[%d]: cannot require roles without authentication (require_auth must be true)", i)
-			}
 		}
 
 		// Compile regex pattern with case-insensitive matching
@@ -148,18 +149,35 @@ func (c *Config) validateAndCompile() error {
 		}
 		route.CompiledPattern = compiled
 
-		// Normalize methods to uppercase
-		for j := range route.Methods {
-			route.Methods[j] = strings.ToUpper(route.Methods[j])
+		if len(route.Methods) > 0 || len(route.RequiredRoles) > 0 || route.RequireAllRoles {
+			return fmt.Errorf("route[%d]: route-level methods/required_roles/require_all_roles are not supported; use rules[]", i)
+		}
+		if route.LegacyRequireAuth != nil {
+			return fmt.Errorf("route[%d]: route-level require_auth is not supported; use rules[].require_auth", i)
+		}
+		if len(route.Rules) == 0 {
+			return fmt.Errorf("route[%d]: routes must define at least one rules entry", i)
+		}
+		for j := range route.Rules {
+			rule := &route.Rules[j]
+			if len(rule.Methods) == 0 {
+				return fmt.Errorf("route[%d].rules[%d]: methods is required", i, j)
+			}
+			for k := range rule.Methods {
+				rule.Methods[k] = strings.ToUpper(rule.Methods[k])
+			}
+			if !rule.RequiresAuth() && len(rule.RequiredRoles) > 0 {
+				return fmt.Errorf("route[%d].rules[%d]: rules with require_auth=false cannot define required_roles", i, j)
+			}
 		}
 	}
 
 	return nil
 }
 
-// RequiresAuth returns true if authentication is required for this route
-// Defaults to true if require_auth is not specified (nil) for backward compatibility
-func (r *RouteConfig) RequiresAuth() bool {
+// RequiresAuth returns true if authentication is required for this rule.
+// Defaults to true if require_auth is not specified.
+func (r *RouteRule) RequiresAuth() bool {
 	if r.RequireAuth == nil {
 		return true // Default to requiring auth if not specified
 	}

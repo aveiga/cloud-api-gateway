@@ -85,9 +85,17 @@ See `config.example.yaml` for a complete example configuration file.
 ### Key Configuration Options
 
 - **Server**: Port, timeouts, and HTTP server settings
-- **Keycloak**: Introspection URL, client credentials, and timeout
+- **Authz**: Introspection URL, client credentials, and timeout
 - **Cache**: Token caching settings (enabled/disabled, TTL)
-- **Routes**: Route definitions with path patterns, methods, upstream URLs, and role requirements
+- **Routes**: Route definitions with path patterns, upstream URLs, and `rules[]` authorization policies
+
+### Route Model
+
+- All routes must define `rules[]`.
+- `methods`, `require_auth`, `required_roles`, and `require_all_roles` are defined inside each rule.
+- Rule authentication defaults to `require_auth: true` when omitted.
+- Authorization is OR across rules: a request is allowed if any matching rule passes.
+- Rules with `require_auth: false` must not define non-empty `required_roles`.
 
 ### Environment Variable Substitution
 
@@ -105,10 +113,10 @@ client_secret: "${KEYCLOAK_CLIENT_SECRET}"
 ## Request Flow
 
 ```
-Request → Router Match → Auth Middleware → RBAC Check → Reverse Proxy → Upstream
-                ↓              ↓                ↓
-            404 if no      401 if token      403 if
-            route match    invalid           roles missing
+Request → Router Match (method rules) → Conditional Auth/RBAC → Reverse Proxy → Upstream
+                ↓                              ↓
+            404 if no                 auth/rbac only when no
+            route match               matching rule has require_auth=false
 ```
 
 ## Dependencies

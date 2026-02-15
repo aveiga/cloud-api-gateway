@@ -25,9 +25,9 @@ func NewRouter(routes []config.RouteConfig) *Router {
 	}
 }
 
-// MatchRoute finds the first route that matches the request path and method
-// Returns nil if no route matches
-func (r *Router) MatchRoute(req *http.Request) *config.RouteConfig {
+// MatchRoute finds the first route that matches request path and method.
+// It returns the route and all method-matching rules for downstream auth decisions.
+func (r *Router) MatchRoute(req *http.Request) (*config.RouteConfig, []config.RouteRule) {
 	path := req.URL.Path
 	method := strings.ToUpper(req.Method)
 
@@ -37,23 +37,30 @@ func (r *Router) MatchRoute(req *http.Request) *config.RouteConfig {
 			continue
 		}
 
-		// Check if method matches (empty methods list means all methods allowed)
-		if len(route.Methods) > 0 {
-			methodMatched := false
-			for _, m := range route.Methods {
-				if m == method {
-					methodMatched = true
-					break
-				}
-			}
-			if !methodMatched {
-				continue
+		var matchingRules []config.RouteRule
+		for _, rule := range route.Rules {
+			if methodMatches(rule.Methods, method) {
+				matchingRules = append(matchingRules, rule)
 			}
 		}
+		if len(matchingRules) == 0 {
+			continue
+		}
 
-		// Found a match
-		return route
+		return route, matchingRules
 	}
 
-	return nil
+	return nil, nil
+}
+
+func methodMatches(allowed []string, method string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, m := range allowed {
+		if m == method {
+			return true
+		}
+	}
+	return false
 }

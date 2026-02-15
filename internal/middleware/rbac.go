@@ -9,25 +9,21 @@ import (
 
 // RBACMiddleware checks if the authenticated user has the required roles
 type RBACMiddleware struct {
-	route *config.RouteConfig
+	routeName string
+	rules     []config.RouteRule
 }
 
-// NewRBACMiddleware creates a new RBAC middleware for a specific route
-func NewRBACMiddleware(route *config.RouteConfig) *RBACMiddleware {
+// NewRBACMiddleware creates a new RBAC middleware for a specific route.
+func NewRBACMiddleware(routeName string, rules []config.RouteRule) *RBACMiddleware {
 	return &RBACMiddleware{
-		route: route,
+		routeName: routeName,
+		rules:     rules,
 	}
 }
 
 // Handler returns an HTTP handler that checks role permissions
 func (m *RBACMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// If no roles required, allow access
-		if len(m.route.RequiredRoles) == 0 {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		// Get token claims from context
 		claims := GetTokenClaims(r)
 		if claims == nil {
@@ -38,15 +34,16 @@ func (m *RBACMiddleware) Handler(next http.Handler) http.Handler {
 		// Get all roles from token
 		userRoles := claims.GetAllRoles()
 
-		// Check if user has required roles
-		hasPermission := m.checkRoles(userRoles, m.route.RequiredRoles, m.route.RequireAllRoles)
-		if !hasPermission {
-			log.Printf("Insufficient permissions for route %s", m.route.Name)
-			http.Error(w, "Insufficient permissions", http.StatusForbidden)
-			return
+		// OR semantics across rules: user is authorized when at least one rule passes.
+		for _, rule := range m.rules {
+			if m.checkRoles(userRoles, rule.RequiredRoles, rule.RequireAllRoles) {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
-		next.ServeHTTP(w, r)
+		log.Printf("Insufficient permissions for route %s", m.routeName)
+		http.Error(w, "Insufficient permissions", http.StatusForbidden)
 	})
 }
 

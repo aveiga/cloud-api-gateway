@@ -20,6 +20,17 @@ import (
 	"github.com/aveiga/cloud-api-gateway/internal/router"
 )
 
+func splitRulesByAuth(rules []config.RouteRule) (publicRules []config.RouteRule, protectedRules []config.RouteRule) {
+	for _, rule := range rules {
+		if rule.RequiresAuth() {
+			protectedRules = append(protectedRules, rule)
+			continue
+		}
+		publicRules = append(publicRules, rule)
+	}
+	return publicRules, protectedRules
+}
+
 func main() {
 	godotenv.Load()
 
@@ -43,7 +54,7 @@ func main() {
 	}
 
 	// Initialize components
-	keycloakClient := auth.NewClient(&cfg.Keycloak, cfg.Cache.Enabled, cfg.Cache.TTL)
+	keycloakClient := auth.NewClient(&cfg.Authz, cfg.Cache.Enabled, cfg.Cache.TTL)
 	routeRouter := router.NewRouter(cfg.Routes)
 	authMW := middleware.NewAuthMiddleware(keycloakClient)
 	auditMW := middleware.NewAuditMiddleware()
@@ -51,7 +62,7 @@ func main() {
 	// Create HTTP handler
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Match route
-		matchedRoute := routeRouter.MatchRoute(r)
+		matchedRoute, matchingRules := routeRouter.MatchRoute(r)
 		if matchedRoute == nil {
 			http.Error(w, "Route not found", http.StatusNotFound)
 			return
@@ -65,23 +76,15 @@ func main() {
 			return
 		}
 
-		// Compose middleware chain
-		// - Public routes (require_auth: false): No auth, no RBAC
-		// - Authenticated routes (require_auth: true, no roles): Auth only
-		// - Authorized routes (require_auth: true, with roles): Auth + RBAC
+		// Compose middleware chain from matched rules.
+		// Any matching public rule bypasses auth; otherwise use auth + RBAC.
 		var chain http.Handler = routeProxy
 
-		if matchedRoute.RequiresAuth() {
-			if len(matchedRoute.RequiredRoles) > 0 {
-				// Route requires both authentication and authorization
-				rbacMW := middleware.NewRBACMiddleware(matchedRoute)
-				chain = authMW.Handler(rbacMW.Handler(routeProxy))
-			} else {
-				// Route requires authentication only (no role check)
-				chain = authMW.Handler(routeProxy)
-			}
+		publicRules, protectedRules := splitRulesByAuth(matchingRules)
+		if len(publicRules) == 0 {
+			rbacMW := middleware.NewRBACMiddleware(matchedRoute.Name, protectedRules)
+			chain = authMW.Handler(rbacMW.Handler(routeProxy))
 		}
-		// If require_auth is false, chain remains as routeProxy (public route)
 
 		chain.ServeHTTP(w, r)
 	})

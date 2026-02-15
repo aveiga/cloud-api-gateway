@@ -37,7 +37,7 @@ type CachedToken struct {
 
 // Client handles Keycloak token introspection with caching
 type Client struct {
-	config      *config.KeycloakConfig
+	config      *config.AuthzConfig
 	httpClient  *http.Client
 	cache       *sync.Map // map[string]*CachedToken
 	cacheEnabled bool
@@ -45,7 +45,7 @@ type Client struct {
 }
 
 // NewClient creates a new Keycloak introspection client
-func NewClient(cfg *config.KeycloakConfig, cacheEnabled bool, cacheTTL time.Duration) *Client {
+func NewClient(cfg *config.AuthzConfig, cacheEnabled bool, cacheTTL time.Duration) *Client {
 	// Create HTTP client with connection pooling
 	transport := &http.Transport{
 		MaxIdleConns:        100,
