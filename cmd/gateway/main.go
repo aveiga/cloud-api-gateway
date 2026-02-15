@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -8,10 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
-
-	"github.com/joho/godotenv"
 
 	"github.com/aveiga/cloud-api-gateway/internal/auth"
 	"github.com/aveiga/cloud-api-gateway/internal/config"
@@ -19,6 +19,38 @@ import (
 	"github.com/aveiga/cloud-api-gateway/internal/proxy"
 	"github.com/aveiga/cloud-api-gateway/internal/router"
 )
+
+// loadEnvFile reads a .env file and sets variables in the process environment.
+// If the file does not exist, it returns without error. Skips empty lines and
+// lines starting with #. Handles KEY=value and basic quoted values.
+func loadEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		value := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		if len(value) >= 2 && (value[0] == '"' && value[len(value)-1] == '"' || value[0] == '\'' && value[len(value)-1] == '\'') {
+			value = value[1 : len(value)-1]
+		}
+		os.Setenv(key, value)
+	}
+}
 
 func splitRulesByAuth(rules []config.RouteRule) (publicRules []config.RouteRule, protectedRules []config.RouteRule) {
 	for _, rule := range rules {
@@ -32,7 +64,7 @@ func splitRulesByAuth(rules []config.RouteRule) (publicRules []config.RouteRule,
 }
 
 func main() {
-	godotenv.Load()
+	loadEnvFile(".env")
 
 	// Parse command line flags
 	configPath := flag.String("config", "", "Path to configuration file (or set CONFIG_PATH env var)")

@@ -1,0 +1,37 @@
+---
+description: Unit tests must cover 90% of the codebase
+alwaysApply: true
+---
+
+# Unit Test Coverage
+
+Unit tests must always cover at least **90%** of the codebase.
+
+## Requirements
+
+- Run coverage before merging: `go test -cover ./...`
+- Target: `-coverprofile` must report ≥90% coverage
+- When adding new code, add corresponding tests to maintain or improve coverage
+- When fixing bugs, add regression tests
+
+## Go Example
+
+```go
+// ❌ BAD: New function with no test
+func processRequest(r *Request) error {
+    return r.Validate()
+}
+
+// ✅ GOOD: Function has test in process_test.go
+func processRequest(r *Request) error {
+    return r.Validate()
+}
+```
+
+## Coverage Commands
+
+```bash
+go test -cover ./...
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out  # View per-package %
+```

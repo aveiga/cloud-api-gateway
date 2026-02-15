@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aveiga/cloud-api-gateway/internal/config"
@@ -23,5 +25,51 @@ func TestSplitRulesByAuth(t *testing.T) {
 	}
 	if len(protectedRules) != 2 {
 		t.Fatalf("expected 2 protected rules, got %d", len(protectedRules))
+	}
+}
+
+func TestLoadEnvFileSetsVariables(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte("TEST_KEY=test_value\n# comment\nANOTHER=val2\n"), 0644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	os.Unsetenv("TEST_KEY")
+	os.Unsetenv("ANOTHER")
+	defer func() {
+		os.Unsetenv("TEST_KEY")
+		os.Unsetenv("ANOTHER")
+	}()
+
+	loadEnvFile(envPath)
+
+	if os.Getenv("TEST_KEY") != "test_value" {
+		t.Errorf("expected TEST_KEY=test_value, got %q", os.Getenv("TEST_KEY"))
+	}
+	if os.Getenv("ANOTHER") != "val2" {
+		t.Errorf("expected ANOTHER=val2, got %q", os.Getenv("ANOTHER"))
+	}
+}
+
+func TestLoadEnvFileNoErrorWhenMissing(t *testing.T) {
+	loadEnvFile("/nonexistent/.env")
+	// Should not panic or fail
+}
+
+func TestLoadEnvFileStripsQuotes(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	if err := os.WriteFile(envPath, []byte(`QUOTED="value with spaces"`), 0644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	os.Unsetenv("QUOTED")
+	defer os.Unsetenv("QUOTED")
+
+	loadEnvFile(envPath)
+
+	if os.Getenv("QUOTED") != "value with spaces" {
+		t.Errorf("expected stripped quotes, got %q", os.Getenv("QUOTED"))
 	}
 }
